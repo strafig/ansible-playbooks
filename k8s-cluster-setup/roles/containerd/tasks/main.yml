@@ -1,0 +1,53 @@
+---
+# Install and configure containerd as container runtime
+
+- name: Install containerd and runc
+  community.general.zypper:
+    name:
+      - containerd
+      - runc
+    state: present
+  notify: Restart containerd
+
+- name: Create containerd configuration directory
+  ansible.builtin.file:
+    path: "{{ containerd_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Deploy containerd configuration with SystemdCgroup enabled
+  ansible.builtin.template:
+    src: containerd-config.toml.j2
+    dest: "{{ containerd_config_dir }}/config.toml"
+    owner: root
+    group: root
+    mode: '0644'
+    backup: true
+  notify: Restart containerd
+
+- name: Configure crictl to use containerd
+  ansible.builtin.copy:
+    content: |
+      runtime-endpoint: unix://{{ containerd_socket }}
+      image-endpoint: unix://{{ containerd_socket }}
+      timeout: 10
+      debug: false
+    dest: /etc/crictl.yaml
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Enable and start containerd service
+  ansible.builtin.systemd:
+    name: containerd
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Verify containerd is running
+  ansible.builtin.systemd:
+    name: containerd
+  register: containerd_service
+  failed_when: containerd_service.status.ActiveState != "active"

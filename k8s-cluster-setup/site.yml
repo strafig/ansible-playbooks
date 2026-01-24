@@ -1,0 +1,64 @@
+---
+# Kubernetes Installation Playbook
+# Installs Kubernetes cluster on OpenSUSE 15.6 using kubeadm
+#
+# Usage:
+#   ansible-playbook -i inventory.ini site.yml
+#   ansible-playbook -i inventory.ini site.yml -e ansible_user=myuser
+
+- name: Prepare all nodes for Kubernetes
+  hosts: all
+  become: true
+  roles:
+    - common
+    - containerd
+    - kubernetes
+
+- name: Initialize Kubernetes control plane
+  hosts: masters
+  become: true
+  roles:
+    - control-plane
+
+- name: Deploy Calico CNI
+  hosts: masters
+  become: true
+  roles:
+    - calico
+
+- name: Join worker nodes to cluster
+  hosts: workers
+  become: true
+  roles:
+    - worker
+
+- name: Verify cluster status
+  hosts: masters
+  become: true
+  tasks:
+    - name: Wait for all nodes to be Ready
+      command: kubectl get nodes --no-headers
+      register: node_status
+      until: >
+        node_status.stdout_lines | length == groups['all'] | length
+        and 'NotReady' not in node_status.stdout
+      retries: 30
+      delay: 10
+      environment:
+        KUBECONFIG: "{{ cluster_initialized_marker }}"
+      changed_when: false
+
+    - name: Display cluster nodes
+      debug:
+        msg: "{{ node_status.stdout_lines }}"
+
+    - name: Get cluster info
+      command: kubectl cluster-info
+      environment:
+        KUBECONFIG: "{{ cluster_initialized_marker }}"
+      changed_when: false
+      register: cluster_info
+
+    - name: Display cluster info
+      debug:
+        msg: "{{ cluster_info.stdout_lines }}"

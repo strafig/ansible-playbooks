@@ -1,0 +1,38 @@
+---
+# SSH and connection settings
+ansible_user: "root"  # Change to your SSH user with passwordless sudo
+ansible_python_interpreter: /usr/bin/python3.11  # OpenSUSE 15.6 needs Python 3.8+
+
+# Kubernetes version (e.g., "1.32.0")
+# Major.minor will be derived for repository URL
+kubernetes_version: "1.32.0"
+
+# Cluster networking
+pod_network_cidr: "10.244.0.0/16"
+service_cidr: "10.96.0.0/12"
+cluster_name: "k8s-cluster"
+
+# Calico CNI version
+calico_version: "3.28.0"
+
+# Containerd configuration
+containerd_socket: "/run/containerd/containerd.sock"
+containerd_config_dir: "/etc/containerd"
+
+# Kernel modules required for Kubernetes
+kernel_modules:
+  - overlay
+  - br_netfilter
+
+# Sysctl settings required for Kubernetes networking
+sysctl_settings:
+  net.ipv4.ip_forward: 1
+  net.bridge.bridge-nf-call-iptables: 1
+  net.bridge.bridge-nf-call-ip6tables: 1
+
+# Kubeconfig location
+kubeconfig_dir: "/root/.kube"
+
+# Idempotency markers
+cluster_initialized_marker: "/etc/kubernetes/admin.conf"
+node_joined_marker: "/etc/kubernetes/kubelet.conf"
