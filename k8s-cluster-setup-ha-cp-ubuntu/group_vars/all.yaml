@@ -1,0 +1,57 @@
+---
+# SSH and connection settings
+ansible_user: "root"  # Change to your SSH user with passwordless sudo
+ansible_python_interpreter: /usr/bin/python3
+
+# Kubernetes version (e.g., "1.32.0")
+# Major.minor will be derived for repository URL
+kubernetes_version: "1.32.0"
+
+# Cluster networking
+pod_network_cidr: "10.244.0.0/16"
+service_cidr: "10.96.0.0/12"
+cluster_name: "k8s-cluster"
+
+# Calico CNI version
+calico_version: "3.28.0"
+
+# Containerd configuration
+containerd_socket: "/run/containerd/containerd.sock"
+containerd_config_dir: "/etc/containerd"
+
+# Kernel modules required for Kubernetes
+kernel_modules:
+  - overlay
+  - br_netfilter
+
+# Sysctl settings required for Kubernetes networking
+sysctl_settings:
+  net.ipv4.ip_forward: 1
+  net.bridge.bridge-nf-call-iptables: 1
+  net.bridge.bridge-nf-call-ip6tables: 1
+
+# Kubeconfig location
+kubeconfig_dir: "/root/.kube"
+
+# Idempotency markers
+cluster_initialized_marker: "/etc/kubernetes/admin.conf"
+node_joined_marker: "/etc/kubernetes/kubelet.conf"
+
+# --- HA Control Plane Configuration ---
+
+# Virtual IP address managed by keepalived (floating between control plane nodes)
+ha_cluster_vip: "10.2.127.100"
+ha_cluster_vip_mask: "24"
+
+# HAProxy configuration
+haproxy_port: 8443  # Frontend port for kube-apiserver load balancing (must differ from 6443)
+haproxy_stats_socket: "/var/lib/haproxy/stats"
+
+# Keepalived configuration
+keepalived_vrrp_interface: "ens33"
+keepalived_virtual_router_id: 60
+keepalived_auth_pass: "1111"
+keepalived_advert_int: 1
+
+# Control plane endpoint (VIP:haproxy_port) used by kubeadm
+control_plane_endpoint: "{{ ha_cluster_vip }}:{{ haproxy_port }}"

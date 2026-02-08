@@ -1,0 +1,165 @@
+---
+# Initialize Kubernetes HA control plane using kubeadm
+# First master (masters[0]) initializes the cluster
+# Additional masters join with --control-plane --certificate-key
+
+# === Common: Check if this node is already initialized/joined ===
+
+- name: Check if cluster is already initialized
+  ansible.builtin.stat:
+    path: "{{ cluster_initialized_marker }}"
+  register: kubeadm_init_check
+
+# === Section A: First master initialization ===
+
+- name: Pull kubeadm container images
+  ansible.builtin.command: kubeadm config images pull
+  when:
+    - inventory_hostname == groups['masters'][0]
+    - not kubeadm_init_check.stat.exists
+  changed_when: true
+
+- name: Generate kubeadm configuration
+  ansible.builtin.template:
+    src: kubeadm-config.yaml.j2
+    dest: /tmp/kubeadm-config.yaml
+    owner: root
+    group: root
+    mode: '0600'
+  when:
+    - inventory_hostname == groups['masters'][0]
+    - not kubeadm_init_check.stat.exists
+
+- name: Initialize Kubernetes control plane with certificate upload
+  ansible.builtin.command: kubeadm init --config /tmp/kubeadm-config.yaml --upload-certs
+  register: kubeadm_init
+  when:
+    - inventory_hostname == groups['masters'][0]
+    - not kubeadm_init_check.stat.exists
+
+- name: Save kubeadm init output
+  ansible.builtin.copy:
+    content: "{{ kubeadm_init.stdout }}"
+    dest: /root/kubeadm-init-output.txt
+    owner: root
+    group: root
+    mode: '0600'
+  when:
+    - inventory_hostname == groups['masters'][0]
+    - kubeadm_init is changed
+
+# === Common: Setup kubeconfig ===
+
+- name: Create .kube directory for root
+  ansible.builtin.file:
+    path: /root/.kube
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Copy admin.conf to root's .kube directory
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /root/.kube/config
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+  when: kubeadm_init_check.stat.exists or (kubeadm_init is defined and kubeadm_init is changed)
+
+- name: Create .kube directory for ansible user
+  ansible.builtin.file:
+    path: "/home/{{ ansible_user }}/.kube"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0700'
+  when: ansible_user != 'root'
+
+- name: Copy admin.conf to ansible user's .kube directory
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "/home/{{ ansible_user }}/.kube/config"
+    remote_src: true
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'
+  when:
+    - ansible_user != 'root'
+    - kubeadm_init_check.stat.exists or (kubeadm_init is defined and kubeadm_init is changed)
+
+- name: Wait for control plane to be ready
+  ansible.builtin.command: kubectl get nodes
+  register: kubectl_nodes
+  until: kubectl_nodes.rc == 0
+  retries: 12
+  delay: 10
+  environment:
+    KUBECONFIG: "{{ cluster_initialized_marker }}"
+  changed_when: false
+  when: inventory_hostname == groups['masters'][0]
+
+# === Section B: Generate and delegate join commands ===
+
+- name: Upload certificates and get certificate key
+  ansible.builtin.command: kubeadm init phase upload-certs --upload-certs
+  register: cert_key_output
+  changed_when: false
+  when: inventory_hostname == groups['masters'][0]
+
+- name: Extract certificate key
+  ansible.builtin.set_fact:
+    kubeadm_certificate_key: "{{ cert_key_output.stdout_lines[-1] }}"
+  when: inventory_hostname == groups['masters'][0]
+
+- name: Generate join command
+  ansible.builtin.command: kubeadm token create --print-join-command
+  register: join_command_raw
+  changed_when: false
+  when: inventory_hostname == groups['masters'][0]
+
+- name: Set control-plane join command for additional masters
+  ansible.builtin.set_fact:
+    kubeadm_cp_join_command: >-
+      {{ join_command_raw.stdout }}
+      --control-plane
+      --certificate-key {{ kubeadm_certificate_key }}
+  when: inventory_hostname == groups['masters'][0]
+
+- name: Delegate control-plane join command to additional masters
+  ansible.builtin.set_fact:
+    kubeadm_cp_join_command: "{{ hostvars[groups['masters'][0]]['kubeadm_cp_join_command'] }}"
+  delegate_facts: true
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['masters'][1:] | default([]) }}"
+  when: inventory_hostname == groups['masters'][0]
+
+- name: Delegate worker join command to workers
+  ansible.builtin.set_fact:
+    kubeadm_join_command: "{{ join_command_raw.stdout }}"
+  delegate_facts: true
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['workers'] | default([]) }}"
+  when: inventory_hostname == groups['masters'][0]
+
+# === Section C: Additional control plane nodes join ===
+
+- name: Join additional control plane node to cluster
+  ansible.builtin.command: "{{ kubeadm_cp_join_command }}"
+  register: kubeadm_cp_join
+  when:
+    - inventory_hostname != groups['masters'][0]
+    - not kubeadm_init_check.stat.exists
+
+- name: Save control plane join output
+  ansible.builtin.copy:
+    content: "{{ kubeadm_cp_join.stdout }}"
+    dest: /root/kubeadm-cp-join-output.txt
+    owner: root
+    group: root
+    mode: '0600'
+  when:
+    - inventory_hostname != groups['masters'][0]
+    - kubeadm_cp_join is defined
+    - kubeadm_cp_join is changed

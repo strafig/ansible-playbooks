@@ -1,0 +1,37 @@
+---
+# Join worker nodes to the Kubernetes cluster
+
+- name: Check if node has already joined the cluster
+  ansible.builtin.stat:
+    path: "{{ node_joined_marker }}"
+  register: node_joined_check
+
+- name: Verify join command is available
+  ansible.builtin.fail:
+    msg: "kubeadm_join_command is not defined. Control plane initialization may have failed."
+  when:
+    - not node_joined_check.stat.exists
+    - kubeadm_join_command is not defined
+
+- name: Join worker node to the cluster
+  ansible.builtin.command: "{{ kubeadm_join_command }}"
+  register: kubeadm_join
+  when: not node_joined_check.stat.exists
+
+- name: Save kubeadm join output
+  ansible.builtin.copy:
+    content: "{{ kubeadm_join.stdout }}"
+    dest: /root/kubeadm-join-output.txt
+    owner: root
+    group: root
+    mode: '0600'
+  when: kubeadm_join is changed
+
+- name: Wait for kubelet to be active
+  ansible.builtin.systemd:
+    name: kubelet
+    state: started
+  register: kubelet_status
+  until: kubelet_status.status.ActiveState == "active"
+  retries: 6
+  delay: 10
