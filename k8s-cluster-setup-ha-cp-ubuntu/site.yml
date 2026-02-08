@@ -22,58 +22,58 @@
     - haproxy
     - keepalived
 
-# - name: Initialize first control plane node
-#   hosts: masters[0]
-#   become: true
-#   roles:
-#     - control-plane
+- name: Initialize first control plane node
+  hosts: masters[0]
+  become: true
+  roles:
+    - control-plane
 
-# - name: Deploy Calico CNI
-#   hosts: masters[0]
-#   become: true
-#   roles:
-#     - calico
+- name: Deploy Calico CNI
+  hosts: masters[0]
+  become: true
+  roles:
+    - calico
 
-# - name: Join additional control plane nodes
-#   hosts: masters[1:]
-#   become: true
-#   serial: 1
-#   roles:
-#     - control-plane
+- name: Join additional control plane nodes
+  hosts: masters[1:]
+  become: true
+  serial: 1
+  roles:
+    - control-plane
 
-# - name: Join worker nodes to cluster
-#   hosts: workers
-#   become: true
-#   roles:
-#     - worker
+- name: Join worker nodes to cluster
+  hosts: workers
+  become: true
+  roles:
+    - worker
 
-# - name: Verify cluster status
-#   hosts: masters[0]
-#   become: true
-#   tasks:
-#     - name: Wait for all nodes to be Ready
-#       command: kubectl get nodes --no-headers
-#       register: node_status
-#       until: >
-#         node_status.stdout_lines | length == groups['all'] | length
-#         and 'NotReady' not in node_status.stdout
-#       retries: 30
-#       delay: 10
-#       environment:
-#         KUBECONFIG: "{{ cluster_initialized_marker }}"
-#       changed_when: false
+- name: Verify cluster status
+  hosts: masters[0]
+  become: true
+  tasks:
+    - name: Wait for all nodes to be Ready
+      command: kubectl get nodes --no-headers
+      register: node_status
+      until: >
+        node_status.stdout_lines | length == groups['all'] | length
+        and 'NotReady' not in node_status.stdout
+      retries: 30
+      delay: 10
+      environment:
+        KUBECONFIG: "{{ cluster_initialized_marker }}"
+      changed_when: false
 
-#     - name: Display cluster nodes
-#       debug:
-#         msg: "{{ node_status.stdout_lines }}"
+    - name: Display cluster nodes
+      debug:
+        msg: "{{ node_status.stdout_lines }}"
 
-#     - name: Get cluster info
-#       command: kubectl cluster-info
-#       environment:
-#         KUBECONFIG: "{{ cluster_initialized_marker }}"
-#       changed_when: false
-#       register: cluster_info
+    - name: Get cluster info
+      command: kubectl cluster-info
+      environment:
+        KUBECONFIG: "{{ cluster_initialized_marker }}"
+      changed_when: false
+      register: cluster_info
 
-#     - name: Display cluster info
-#       debug:
-#         msg: "{{ cluster_info.stdout_lines }}"
+    - name: Display cluster info
+      debug:
+        msg: "{{ cluster_info.stdout_lines }}"
