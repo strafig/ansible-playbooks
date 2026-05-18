@@ -5,7 +5,7 @@ ansible_python_interpreter: /usr/bin/python3
 
 # Kubernetes version (e.g., "1.32.0")
 # Major.minor will be derived for repository URL
-kubernetes_version: "1.32.0"
+kubernetes_version: "1.36.0"
 
 # Cluster networking
 pod_network_cidr: "10.244.0.0/16"
@@ -13,7 +13,7 @@ service_cidr: "10.96.0.0/12"
 cluster_name: "k8s-cluster"
 
 # Calico CNI version
-calico_version: "3.28.0"
+calico_version: "3.32.0"
 
 # Containerd configuration
 containerd_socket: "/run/containerd/containerd.sock"
