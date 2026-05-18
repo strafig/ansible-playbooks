@@ -1,0 +1,34 @@
+---
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: "{{ ansible_default_ipv4.address }}"
+  bindPort: 6443
+nodeRegistration:
+  criSocket: "unix://{{ containerd_socket }}"
+  imagePullPolicy: IfNotPresent
+---
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: ClusterConfiguration
+kubernetesVersion: "v{{ kubernetes_version }}"
+clusterName: "{{ cluster_name }}"
+controlPlaneEndpoint: "{{ control_plane_endpoint }}"
+networking:
+  podSubnet: "{{ pod_network_cidr }}"
+  serviceSubnet: "{{ service_cidr }}"
+  dnsDomain: "cluster.local"
+apiServer:
+  certSANs:
+    - "{{ ha_cluster_vip }}"
+{% for host in groups['masters'] %}
+    - "{{ hostvars[host]['ansible_default_ipv4']['address'] }}"
+    - "{{ hostvars[host]['ansible_hostname'] }}"
+    - "{{ hostvars[host]['ansible_fqdn'] | default(hostvars[host]['ansible_hostname']) }}"
+{% endfor %}
+    - "localhost"
+    - "127.0.0.1"
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+cgroupDriver: systemd
+containerRuntimeEndpoint: "unix://{{ containerd_socket }}"

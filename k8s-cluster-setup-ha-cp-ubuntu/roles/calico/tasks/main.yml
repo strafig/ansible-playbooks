@@ -1,0 +1,54 @@
+---
+# Deploy Calico CNI plugin
+
+- name: Check if Calico is already deployed
+  ansible.builtin.command: kubectl get pods -n kube-system -l k8s-app=calico-node --no-headers
+  register: calico_check
+  failed_when: false
+  changed_when: false
+  environment:
+    KUBECONFIG: "{{ cluster_initialized_marker }}"
+
+- name: Download Calico manifest
+  ansible.builtin.get_url:
+    url: "https://raw.githubusercontent.com/projectcalico/calico/v{{ calico_version }}/manifests/calico.yaml"
+    dest: /tmp/calico.yaml
+    mode: '0644'
+  when: calico_check.stdout == ""
+
+- name: Update Calico CIDR to match pod network
+  ansible.builtin.replace:
+    path: /tmp/calico.yaml
+    regexp: '192\.168\.0\.0/16'
+    replace: "{{ pod_network_cidr }}"
+  when:
+    - calico_check.stdout == ""
+    - pod_network_cidr != "192.168.0.0/16"
+
+- name: Apply Calico manifest
+  ansible.builtin.command: kubectl apply -f /tmp/calico.yaml
+  environment:
+    KUBECONFIG: "{{ cluster_initialized_marker }}"
+  when: calico_check.stdout == ""
+  register: calico_apply
+
+- name: Wait for Calico pods to be ready
+  ansible.builtin.command: kubectl get pods -n kube-system -l k8s-app=calico-node -o jsonpath='{.items[*].status.phase}'
+  register: calico_pods
+  until: "'Running' in calico_pods.stdout"
+  retries: 30
+  delay: 10
+  environment:
+    KUBECONFIG: "{{ cluster_initialized_marker }}"
+  changed_when: false
+
+- name: Display Calico status
+  ansible.builtin.command: kubectl get pods -n kube-system -l k8s-app=calico-node
+  register: calico_status
+  environment:
+    KUBECONFIG: "{{ cluster_initialized_marker }}"
+  changed_when: false
+
+- name: Show Calico pods
+  ansible.builtin.debug:
+    msg: "{{ calico_status.stdout_lines }}"

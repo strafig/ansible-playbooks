@@ -1,0 +1,38 @@
+---
+# /etc/hosts Distribution Playbook
+# Reads a local file of host entries and adds them to /etc/hosts on all targets.
+#
+# Usage:
+#   ansible-playbook site.yml
+#   ansible-playbook site.yml -e hosts_entries_file=/path/to/custom/file
+
+- name: Add host entries to /etc/hosts on all nodes
+  hosts: all
+  become: true
+  tasks:
+    - name: Verify hosts entries file exists locally
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/{{ hosts_entries_file }}"
+      delegate_to: localhost
+      become: false
+      run_once: true
+      register: hosts_file_stat
+
+    - name: Fail if hosts entries file is missing
+      ansible.builtin.fail:
+        msg: >-
+          Hosts entries file '{{ hosts_entries_file }}' not found at
+          {{ playbook_dir }}/{{ hosts_entries_file }}.
+          Create this file with your /etc/hosts entries or pass
+          -e hosts_entries_file=/path/to/your/file.
+      when: not hosts_file_stat.stat.exists
+      run_once: true
+
+    - name: Add host entries block to /etc/hosts
+      ansible.builtin.blockinfile:
+        path: /etc/hosts
+        block: "{{ lookup('file', playbook_dir + '/' + hosts_entries_file) }}"
+        marker: "# {mark} ANSIBLE MANAGED - k8s host entries"
+        create: false
+        state: present
+        backup: true

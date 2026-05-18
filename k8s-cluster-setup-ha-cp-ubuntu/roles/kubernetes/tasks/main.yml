@@ -1,0 +1,75 @@
+---
+# Install Kubernetes packages (kubeadm, kubelet, kubectl)
+
+- name: Set Kubernetes major.minor version for repository
+  ansible.builtin.set_fact:
+    kubernetes_major_minor: "{{ kubernetes_version.split('.')[:2] | join('.') }}"
+
+- name: Create keyrings directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Download Kubernetes APT repository GPG key
+  ansible.builtin.shell: >
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_major_minor }}/deb/Release.key
+    | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg --yes
+  args:
+    creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+- name: Add Kubernetes APT repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_major_minor }}/deb/ /"
+    filename: kubernetes
+    state: present
+    update_cache: true
+
+- name: Install Kubernetes packages
+  ansible.builtin.apt:
+    name:
+      - kubeadm
+      - kubelet
+      - kubectl
+      - kubernetes-cni
+      - cri-tools
+    state: present
+  notify: Restart kubelet
+
+- name: Hold Kubernetes packages at current version
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop:
+    - kubeadm
+    - kubelet
+    - kubectl
+
+- name: Create kubelet service drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/kubelet.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Configure kubelet to use containerd
+  ansible.builtin.copy:
+    content: |
+      [Service]
+      Environment="KUBELET_EXTRA_ARGS=--container-runtime-endpoint=unix://{{ containerd_socket }}"
+    dest: /etc/systemd/system/kubelet.service.d/10-containerd.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemd daemon
+    - Restart kubelet
+
+- name: Enable kubelet service
+  ansible.builtin.systemd:
+    name: kubelet
+    enabled: true
+    daemon_reload: true

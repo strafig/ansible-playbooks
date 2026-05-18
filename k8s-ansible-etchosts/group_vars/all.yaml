@@ -1,0 +1,6 @@
+---
+ansible_user: "rufat"
+
+# Path to the local file containing /etc/hosts entries to distribute
+# Override at runtime with: -e hosts_entries_file=/path/to/file
+hosts_entries_file: "hosts_entries"
